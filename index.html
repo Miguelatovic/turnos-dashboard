@@ -187,6 +187,14 @@ canvas{max-height:260px}
   border:1px solid var(--border);background:var(--surface);color:var(--text-muted);transition:all .15s}
 .pag-btn:hover,.pag-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .pag-info{font-size:12px;color:var(--text-muted);font-family:'DM Mono',monospace;margin:0 8px}
+.kpi-progress-wrap{margin-top:8px;height:5px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.kpi-progress-bar{height:100%;border-radius:3px;transition:width .6s ease}
+.kpi-fraction{font-size:11px;color:var(--text-muted);font-family:'DM Mono',monospace;margin-top:4px}
+.config-btn{position:fixed;bottom:28px;left:28px;z-index:200;background:var(--surface);
+  border:1px solid var(--border);color:var(--text-muted);width:42px;height:42px;
+  border-radius:50%;cursor:pointer;font-size:18px;display:flex;align-items:center;
+  justify-content:center;transition:all .2s;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.config-btn:hover{border-color:var(--accent);color:var(--accent);transform:scale(1.1)}
 @media(max-width:900px){
   .charts-grid{grid-template-columns:1fr}
   .kpi-grid{grid-template-columns:repeat(2,1fr)}
@@ -372,18 +380,27 @@ canvas{max-height:260px}
 <div class="modal-overlay" id="modal-cal">
   <div class="modal">
     <div class="modal-title" id="modal-cal-title">Nuevo Registro</div>
-    <div class="input-wrap"><label>FECHA</label><input type="date" id="c-in-fecha" class="filter-input" style="width:100%"></div>
     <div class="input-wrap">
       <label>TIPO</label>
-      <select id="c-in-tipo" class="filter-input" style="width:100%">
+      <select id="c-in-tipo" class="filter-input" style="width:100%" onchange="toggleCalFields()">
         <option>Vacaciones</option>
         <option>Asunto propio</option>
         <option>Horas extra</option>
         <option>Baja/Enfermedad</option>
       </select>
     </div>
-    <div class="input-wrap"><label>HORAS (solo para horas extra)</label><input type="number" id="c-in-horas" class="filter-input" style="width:100%" placeholder="ej: 3.5" step="0.5" min="0"></div>
-    <div class="input-wrap"><label>NOTAS (opcional)</label><input type="text" id="c-in-notas" class="filter-input" style="width:100%" placeholder="ej: guardia, festivo..."></div>
+    <div id="cal-range-wrap">
+      <div class="form-row">
+        <div class="input-wrap"><label>FECHA INICIO</label><input type="date" id="c-in-fecha-ini" class="filter-input" style="width:100%"></div>
+        <div class="input-wrap"><label>FECHA FIN</label><input type="date" id="c-in-fecha-fin" class="filter-input" style="width:100%"></div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);font-family:'DM Mono',monospace;margin-top:-8px;margin-bottom:12px" id="cal-range-preview"></div>
+    </div>
+    <div id="cal-single-wrap" style="display:none">
+      <div class="input-wrap"><label>FECHA</label><input type="date" id="c-in-fecha" class="filter-input" style="width:100%"></div>
+      <div class="input-wrap"><label>HORAS</label><input type="number" id="c-in-horas" class="filter-input" style="width:100%" placeholder="ej: 3.5" step="0.5" min="0"></div>
+    </div>
+    <div class="input-wrap"><label>NOTAS (opcional)</label><input type="text" id="c-in-notas" class="filter-input" style="width:100%" placeholder="ej: vacaciones verano..."></div>
     <div class="error-msg" id="modal-cal-error"></div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-cal')">Cancelar</button>
@@ -402,6 +419,30 @@ canvas{max-height:260px}
     <div class="modal-footer" style="justify-content:center">
       <button class="btn btn-ghost" onclick="closeModal('modal-confirm')">Cancelar</button>
       <button class="btn btn-danger" onclick="confirmDelete()">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIG BTN -->
+<button class="config-btn" onclick="openConfig()" title="Configuracion anual">⚙️</button>
+
+<!-- MODAL CONFIG -->
+<div class="modal-overlay" id="modal-config">
+  <div class="modal">
+    <div class="modal-title">Configuracion Anual</div>
+    <div style="font-size:13px;color:var(--text-muted);font-family:'DM Mono',monospace;margin-bottom:20px">Indica los dias disponibles por tipo cada ano. Se usaran para calcular los KPIs de progreso.</div>
+    <div class="form-row">
+      <div class="input-wrap"><label>DIAS VACACIONES</label><input type="number" id="cfg-vac" class="filter-input" style="width:100%" min="0" placeholder="ej: 23"></div>
+      <div class="input-wrap"><label>ASUNTOS PROPIOS</label><input type="number" id="cfg-asp" class="filter-input" style="width:100%" min="0" placeholder="ej: 3"></div>
+    </div>
+    <div class="form-row">
+      <div class="input-wrap"><label>DIAS LIBRE DISPOSICION</label><input type="number" id="cfg-ld" class="filter-input" style="width:100%" min="0" placeholder="ej: 2"></div>
+      <div class="input-wrap"><label>OBJETIVO HORAS EXTRA</label><input type="number" id="cfg-hex" class="filter-input" style="width:100%" min="0" placeholder="ej: 40"></div>
+    </div>
+    <div class="error-msg" id="modal-config-error"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-config')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveConfig()">Guardar</button>
     </div>
   </div>
 </div>
@@ -650,12 +691,14 @@ function renderCalKPIs(){
   const asp=thisYear.filter(r=>r.tipo==='Asunto propio').length;
   const hex=thisYear.filter(r=>r.tipo==='Horas extra').reduce((s,r)=>s+parseFloat(r.horas||0),0);
   const baja=thisYear.filter(r=>r.tipo==='Baja/Enfermedad').length;
-  document.getElementById('cal-kpi-grid').innerHTML=[
-    {label:'VACACIONES '+yr,val:vac,sub:'dias disfrutados',color:'#4f9cf9'},
-    {label:'ASUNTOS PROPIOS '+yr,val:asp,sub:'dias usados',color:'#7c6aff'},
-    {label:'HORAS EXTRA '+yr,val:hex.toFixed(1)+'h',sub:thisYear.filter(r=>r.tipo==='Horas extra').length+' registros',color:'#4ade80'},
-    {label:'BAJAS '+yr,val:baja,sub:'dias de baja',color:'#f87171'},
-  ].map(k=>`<div class="kpi-card" style="--kpi-color:${k.color}"><div class="kpi-label">${k.label}</div><div class="kpi-value" style="color:${k.color}">${k.val}</div><div class="kpi-sub">${k.sub}</div></div>`).join('');
+  const cfg=loadConfig();
+  document.getElementById('cal-kpi-grid').innerHTML=
+    kpiProgressCard('VACACIONES '+yr, vac, cfg.vac||0, '#4f9cf9', 'dias disfrutados')+
+    kpiProgressCard('ASUNTOS PROPIOS '+yr, asp, cfg.asp||0, '#7c6aff', 'dias usados')+
+    kpiProgressCard('LIBRE DISPOSICION '+yr, 0, cfg.ld||0, '#f97b4f', 'dias disponibles')+
+    kpiProgressCard('HORAS EXTRA '+yr, parseFloat(hex.toFixed(1)), cfg.hex||0, '#4ade80', 'horas acumuladas')+
+    `<div class="kpi-card" style="--kpi-color:#f87171"><div class="kpi-label">BAJAS ${yr}</div><div class="kpi-value" style="color:#f87171">${baja}</div><div class="kpi-sub">dias de baja</div></div>`+
+    (cfg.vac||cfg.asp?`<div class="kpi-card" style="--kpi-color:#fbbf24"><div class="kpi-label">DIAS PENDIENTES</div><div class="kpi-value" style="color:#fbbf24">${Math.max(0,(cfg.vac||0)-vac) + Math.max(0,(cfg.asp||0)-asp)}</div><div class="kpi-sub">vac + asuntos sin usar</div></div>`:'');
 }
 function renderCalGrid(){
   document.getElementById('cal-month-title').textContent=MONTH_FULL[calMonth]+' '+calYear;
@@ -747,39 +790,109 @@ async function saveRecord(){
 }
 
 // CRUD CALENDARIO
+function toggleCalFields(){
+  const tipo=document.getElementById('c-in-tipo').value;
+  const isHex=tipo==='Horas extra';
+  document.getElementById('cal-range-wrap').style.display=isHex?'none':'block';
+  document.getElementById('cal-single-wrap').style.display=isHex?'block':'none';
+}
+function updateRangePreview(){
+  const ini=document.getElementById('c-in-fecha-ini').value;
+  const fin=document.getElementById('c-in-fecha-fin').value;
+  const prev=document.getElementById('cal-range-preview');
+  if(ini&&fin&&fin>=ini){
+    const days=getDatesInRange(ini,fin).length;
+    prev.textContent=days+' dia'+(days!==1?'s':'')+' seleccionado'+(days!==1?'s':'');
+    prev.style.color='var(--success)';
+  }else if(ini&&fin&&fin<ini){
+    prev.textContent='La fecha fin debe ser posterior a la inicio';
+    prev.style.color='var(--danger)';
+  }else{
+    prev.textContent='';
+  }
+}
+function getDatesInRange(start,end){
+  const dates=[];
+  let current=new Date(start+'T12:00:00');
+  const last=new Date(end+'T12:00:00');
+  while(current<=last){
+    dates.push(current.toISOString().slice(0,10));
+    current.setDate(current.getDate()+1);
+  }
+  return dates;
+}
 function openCalModal(idx, fechaPrefill){
   calEditingId=idx!==undefined&&idx!==null?idx:null;
   document.getElementById('modal-cal-title').textContent=calEditingId!==null?'Editar Registro':'Nuevo Registro';
   document.getElementById('modal-cal-save-btn').textContent=calEditingId!==null?'Actualizar':'Guardar';
   document.getElementById('modal-cal-error').textContent='';
+  document.getElementById('cal-range-preview').textContent='';
   if(calEditingId!==null){
     const r=calData[calEditingId];
-    document.getElementById('c-in-fecha').value=r.fecha;
     document.getElementById('c-in-tipo').value=r.tipo;
+    toggleCalFields();
+    document.getElementById('c-in-fecha').value=r.fecha;
+    document.getElementById('c-in-fecha-ini').value=r.fecha;
+    document.getElementById('c-in-fecha-fin').value=r.fecha;
     document.getElementById('c-in-horas').value=r.horas||'';
     document.getElementById('c-in-notas').value=r.notas||'';
   }else{
-    document.getElementById('c-in-fecha').value=fechaPrefill||'';
     document.getElementById('c-in-tipo').value='Vacaciones';
+    toggleCalFields();
+    document.getElementById('c-in-fecha-ini').value=fechaPrefill||'';
+    document.getElementById('c-in-fecha-fin').value=fechaPrefill||'';
+    document.getElementById('c-in-fecha').value=fechaPrefill||'';
     document.getElementById('c-in-horas').value='';
     document.getElementById('c-in-notas').value='';
   }
   document.getElementById('modal-cal').classList.add('open');
+  document.getElementById('c-in-fecha-ini').addEventListener('change',updateRangePreview);
+  document.getElementById('c-in-fecha-fin').addEventListener('change',updateRangePreview);
 }
 async function saveCalRecord(){
-  const fecha=document.getElementById('c-in-fecha').value.trim();
   const tipo=document.getElementById('c-in-tipo').value;
-  const horas=document.getElementById('c-in-horas').value.trim();
   const notas=document.getElementById('c-in-notas').value.trim();
-  if(!fecha||!tipo){document.getElementById('modal-cal-error').textContent='Fecha y tipo son obligatorios';return}
-  if(tipo==='Horas extra'&&!horas){document.getElementById('modal-cal-error').textContent='Indica las horas para horas extra';return}
-  closeModal('modal-cal');showLoading(calEditingId!==null?'Actualizando...':'Guardando...');
-  try{
-    const result=calEditingId!==null?await apiCall({action:'calUpdate',idx:calEditingId,fecha,tipo,horas,notas}):await apiCall({action:'calAdd',fecha,tipo,horas,notas});
-    if(result.ok){await loadFromSheets();populateCalFilters();renderCalPage();renderDashboard();toast(calEditingId!==null?'Registro actualizado':'Registro anadido')}
-    else toast('Error al guardar');
-  }catch(e){toast('Error de conexion')}
-  hideLoading();
+  document.getElementById('modal-cal-error').textContent='';
+
+  if(tipo==='Horas extra'){
+    const fecha=document.getElementById('c-in-fecha').value.trim();
+    const horas=document.getElementById('c-in-horas').value.trim();
+    if(!fecha){document.getElementById('modal-cal-error').textContent='La fecha es obligatoria';return}
+    if(!horas){document.getElementById('modal-cal-error').textContent='Indica las horas';return}
+    closeModal('modal-cal');showLoading(calEditingId!==null?'Actualizando...':'Guardando...');
+    try{
+      const result=calEditingId!==null?await apiCall({action:'calUpdate',idx:calEditingId,fecha,tipo,horas,notas}):await apiCall({action:'calAdd',fecha,tipo,horas,notas});
+      if(result.ok){await loadFromSheets();populateCalFilters();renderCalPage();renderDashboard();toast(calEditingId!==null?'Registro actualizado':'Registro anadido')}
+      else toast('Error al guardar');
+    }catch(e){toast('Error de conexion')}
+    hideLoading();
+  } else {
+    const ini=document.getElementById('c-in-fecha-ini').value;
+    const fin=document.getElementById('c-in-fecha-fin').value;
+    if(!ini){document.getElementById('modal-cal-error').textContent='La fecha inicio es obligatoria';return}
+    if(!fin){document.getElementById('modal-cal-error').textContent='La fecha fin es obligatoria';return}
+    if(fin<ini){document.getElementById('modal-cal-error').textContent='La fecha fin debe ser posterior a la inicio';return}
+    const dates=getDatesInRange(ini,fin);
+    if(calEditingId!==null){
+      closeModal('modal-cal');showLoading('Actualizando...');
+      try{
+        const result=await apiCall({action:'calUpdate',idx:calEditingId,fecha:ini,tipo,horas:'',notas});
+        if(result.ok){await loadFromSheets();populateCalFilters();renderCalPage();renderDashboard();toast('Registro actualizado')}
+        else toast('Error al actualizar');
+      }catch(e){toast('Error de conexion')}
+      hideLoading();
+    } else {
+      closeModal('modal-cal');showLoading('Guardando '+dates.length+' dias...');
+      try{
+        for(const fecha of dates){
+          await apiCall({action:'calAdd',fecha,tipo,horas:'',notas});
+        }
+        await loadFromSheets();populateCalFilters();renderCalPage();renderDashboard();
+        toast(dates.length+' dia'+(dates.length!==1?'s':'')+' guardado'+(dates.length!==1?'s':''));
+      }catch(e){toast('Error de conexion')}
+      hideLoading();
+    }
+  }
 }
 
 function openConfirmDelete(idx,isCal){
@@ -805,6 +918,42 @@ document.querySelectorAll('.modal-overlay').forEach(m=>m.addEventListener('click
 
 let toastTimer;
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2800)}
+
+// CONFIG
+function loadConfig(){
+  try{return JSON.parse(localStorage.getItem('turnos_config')||'{}')}catch(e){return{}}
+}
+function saveConfig(){
+  const cfg={
+    vac:parseInt(document.getElementById('cfg-vac').value)||0,
+    asp:parseInt(document.getElementById('cfg-asp').value)||0,
+    ld:parseInt(document.getElementById('cfg-ld').value)||0,
+    hex:parseInt(document.getElementById('cfg-hex').value)||0,
+  };
+  localStorage.setItem('turnos_config',JSON.stringify(cfg));
+  closeModal('modal-config');
+  renderCalPage();
+  toast('Configuracion guardada');
+}
+function openConfig(){
+  const cfg=loadConfig();
+  document.getElementById('cfg-vac').value=cfg.vac||'';
+  document.getElementById('cfg-asp').value=cfg.asp||'';
+  document.getElementById('cfg-ld').value=cfg.ld||'';
+  document.getElementById('cfg-hex').value=cfg.hex||'';
+  document.getElementById('modal-config').classList.add('open');
+}
+function kpiProgressCard(label,used,total,color,sub){
+  const pct=total>0?Math.min(100,Math.round(used/total*100)):0;
+  const fraction=total>0?`${used}/${total}`:`${used}`;
+  const subText=total>0?`${pct}% usado · ${Math.max(0,total-used)} restantes`:sub;
+  return `<div class="kpi-card" style="--kpi-color:${color}">
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-value" style="color:${color}">${fraction}</div>
+    <div class="kpi-progress-wrap"><div class="kpi-progress-bar" style="width:${pct}%;background:${color}"></div></div>
+    <div class="kpi-fraction">${subText}</div>
+  </div>`;
+}
 
 async function init(){await loadFromSheets();populateFilters();renderDashboard()}
 </script>
