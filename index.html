@@ -526,20 +526,14 @@ function renderDashboard(){
   const avg=months.length?(data.length/months.length).toFixed(1):0;
   const pct=n=>data.length?((n/data.length)*100).toFixed(1)+'%':'0%';
 
-  // Cal KPIs
-  const vacDias=calData.filter(r=>r.tipo==='Vacaciones').length;
-  const aspDias=calData.filter(r=>r.tipo==='Asunto propio').length;
-  const hexHoras=calData.filter(r=>r.tipo==='Horas extra').reduce((s,r)=>s+parseFloat(r.horas||0),0);
-  const bajaDias=calData.filter(r=>r.tipo==='Baja/Enfermedad').length;
-
   document.getElementById('total-badge').textContent=data.length+' turnos';
   document.getElementById('kpi-grid').innerHTML=[
     {label:'TOTAL TURNOS',val:data.length,sub:'registros totales',color:'var(--accent)'},
     {label:'LINEA MAS USADA',val:top[0],sub:top[1]+' turnos · '+pct(top[1]),color:'var(--success)'},
-    {label:'PROM TURNOS/MES',val:avg,sub:months.length+' meses con datos',color:'var(--accent2)'},
-    {label:'VACACIONES',val:vacDias,sub:'dias registrados',color:'#4f9cf9'},
-    {label:'ASUNTOS PROPIOS',val:aspDias,sub:'dias registrados',color:'#7c6aff'},
-    {label:'HORAS EXTRA',val:hexHoras.toFixed(1)+'h',sub:calData.filter(r=>r.tipo==='Horas extra').length+' registros',color:'#4ade80'},
+    {label:'% LINEA LIDER',val:pct(top[1]),sub:top[0],color:'var(--accent2)'},
+    {label:'N LINEAS ACTIVAS',val:sorted.length,sub:'lineas diferentes',color:'var(--accent3)'},
+    {label:'LINEA MENOS USADA',val:bot[0],sub:bot[1]+' turno(s)',color:'var(--warning)'},
+    {label:'PROM TURNOS/MES',val:avg,sub:months.length+' meses con datos',color:'#f472b6'},
   ].map(k=>`<div class="kpi-card" style="--kpi-color:${k.color}"><div class="kpi-label">${k.label}</div><div class="kpi-value" style="color:${k.color}">${k.val}</div><div class="kpi-sub">${k.sub}</div></div>`).join('');
 
   destroyCharts();
